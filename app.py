@@ -9,6 +9,10 @@ from pipeline import create_vector_store, create_qa_chain
 
 api_key = os.getenv("OPENAI_API_KEY") or st.secrets["OPENAI_API_KEY"]
 os.environ["OPENAI_API_KEY"] = api_key
+st.warning(
+    "⚠️ Transcript fetch may fail due to YouTube restrictions.\n"
+    "If it fails, please paste transcript manually below."
+)
 
 # Page config
 st.set_page_config(page_title="YouTube RAG Chatbot")
@@ -28,8 +32,13 @@ if "messages" not in st.session_state:
 # Video Input Section
 # -------------------------------
 st.markdown("### 📺 Step 1: Enter YouTube Video ID")
+manual_text = st.text_area(
+    "📄 Or paste transcript manually (if auto-fetch fails)",
+    placeholder="Paste full transcript here..."
+)
 st.caption("💡 Paste full YouTube link — no need to extract ID manually")
 st.info("🌐 Non-English videos are automatically translated to English")
+st.info("🌐 If transcript fetching fails (YouTube restrictions), paste transcript manually")
 video_input = st.text_input(
     "YouTube URL or Video ID",
     placeholder="Paste full YouTube link or ID"
@@ -43,28 +52,29 @@ process_button = st.button("Process Video")
 
 
 if process_button:
-    if not video_input:
-        st.warning("⚠️ Please enter a YouTube URL or ID")
+    if not video_input and not manual_text:
+        st.warning("⚠️ Please enter a YouTube URL or paste transcript")
     else:
         try:
-            video_id = extract_video_id(video_input)
-        except Exception:
-            st.error("❌ Invalid YouTube URL or ID")
-            st.stop()
-
-        with st.spinner("Processing video..."):
-            try:
+            if manual_text:
+                text = manual_text
+            else:
+                video_id = extract_video_id(video_input)
                 text = get_transcript(video_id)
-                vector_store = create_vector_store(text)
-                qa_chain = create_qa_chain(vector_store)
 
-                st.session_state.qa_chain = qa_chain
-                st.session_state.messages = []  # reset chat
+            vector_store = create_vector_store(text)
+            qa_chain = create_qa_chain(vector_store)
 
-                st.success("✅ Video processed! You can now chat below 👇")
+            st.session_state.qa_chain = qa_chain
+            st.session_state.messages = []
 
-            except Exception as e:
-                st.error(f"❌ Error: {str(e)}")
+            st.success("✅ Ready! You can now chat below 👇")
+
+        except Exception as e:
+            st.error(
+                "❌ Could not fetch transcript automatically.\n"
+                "👉 Please paste transcript manually above."
+            )
 
 # -------------------------------
 # Chat Section
