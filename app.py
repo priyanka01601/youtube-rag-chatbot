@@ -1,108 +1,111 @@
 import streamlit as st
 import os
 from dotenv import load_dotenv
-from utils import extract_video_id
-from utils import get_transcript
+
+from utils import extract_video_id, get_transcript
 from pipeline import create_vector_store, create_qa_chain
 
-# Load API key
+# -------------------------------
+# Load API Key (works locally + cloud)
+# -------------------------------
+load_dotenv()
 
-api_key = os.getenv("OPENAI_API_KEY") or st.secrets["OPENAI_API_KEY"]
-os.environ["OPENAI_API_KEY"] = api_key
-st.warning(
-    "⚠️ Transcript fetch may fail due to YouTube restrictions.\n"
-    "If it fails, please paste transcript manually below."
-)
-
-# Page config
-st.set_page_config(page_title="YouTube RAG Chatbot")
-
-st.title("🎥 YouTube Video Chatbot")
+if "OPENAI_API_KEY" not in os.environ:
+    if "OPENAI_API_KEY" in st.secrets:
+        os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
 
 # -------------------------------
-# Session state initialization
+# Page Config
+# -------------------------------
+st.set_page_config(page_title="YouTube RAG Chatbot", layout="centered")
+
+st.title("🎥 YouTube Chatbot")
+
+# -------------------------------
+# Session State
 # -------------------------------
 if "qa_chain" not in st.session_state:
     st.session_state.qa_chain = None
 
 if "messages" not in st.session_state:
-    st.session_state.messages = []  # chat history
+    st.session_state.messages = []
 
 # -------------------------------
 # Video Input Section
 # -------------------------------
-st.markdown("### 📺 Step 1: Enter YouTube Video ID")
-manual_text = st.text_area(
-    "📄 Or paste transcript manually (if auto-fetch fails)",
-    placeholder="Paste full transcript here..."
-)
-st.caption("💡 Paste full YouTube link — no need to extract ID manually")
-st.info("🌐 Non-English videos are automatically translated to English")
-st.info("🌐 If transcript fetching fails (YouTube restrictions), paste transcript manually")
+st.markdown("### 📺 Add Video")
+
 video_input = st.text_input(
-    "YouTube URL or Video ID",
-    placeholder="Paste full YouTube link or ID"
+    "Paste YouTube link or ID",
+    placeholder="https://youtube.com/watch?v=..."
 )
+
+# Optional manual transcript (clean UX)
+with st.expander("⚙️ Optional: Paste transcript manually"):
+    manual_text = st.text_area(
+        "Paste transcript here",
+        placeholder="Use only if auto-fetch fails"
+    )
 
 process_button = st.button("Process Video")
 
 # -------------------------------
 # Process Video
 # -------------------------------
-
-
 if process_button:
     if not video_input and not manual_text:
-        st.warning("⚠️ Please enter a YouTube URL or paste transcript")
+        st.warning("Please provide a YouTube link or transcript.")
     else:
-        try:
-            if manual_text:
-                text = manual_text
-            else:
-                video_id = extract_video_id(video_input)
-                text = get_transcript(video_id)
+        with st.spinner("Processing video... ⏳"):
+            try:
+                if manual_text:
+                    text = manual_text
+                else:
+                    video_id = extract_video_id(video_input)
+                    text = get_transcript(video_id)
 
-            vector_store = create_vector_store(text)
-            qa_chain = create_qa_chain(vector_store)
+                vector_store = create_vector_store(text)
+                qa_chain = create_qa_chain(vector_store)
 
-            st.session_state.qa_chain = qa_chain
-            st.session_state.messages = []
+                st.session_state.qa_chain = qa_chain
+                st.session_state.messages = []
 
-            st.success("✅ Ready! You can now chat below 👇")
+                st.success("✅ Ready! Ask questions below 👇")
 
-        except Exception as e:
-            st.error(
-                "❌ Could not fetch transcript automatically.\n"
-                "👉 Please paste transcript manually above."
-            )
+            except Exception:
+                st.warning("⚠️ Couldn't fetch transcript. Try pasting it manually.")
 
 # -------------------------------
 # Chat Section
 # -------------------------------
-st.markdown("### 💬 Chat")
+st.markdown("### 💬 Chat with the Video")
+
+# Show hint if not ready
+if not st.session_state.qa_chain:
+    st.info("👆 Add a video to start chatting")
 
 # Display chat history
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# Chat input (replaces Ask button)
+# Chat input
 query = st.chat_input("Ask something about the video...")
 
 # -------------------------------
-# Handle Chat Query
+# Handle Chat
 # -------------------------------
 if query:
     if not st.session_state.qa_chain:
-        st.warning("⚠️ Please process a video first!")
+        st.warning("Please process a video first.")
     else:
-        # Save user message
+        # User message
         st.session_state.messages.append({"role": "user", "content": query})
 
         with st.chat_message("user"):
             st.markdown(query)
 
-        # Generate response
+        # AI response
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
                 try:
@@ -110,22 +113,20 @@ if query:
 
                     st.markdown(response)
 
-                    # Save assistant response
                     st.session_state.messages.append(
                         {"role": "assistant", "content": response}
                     )
 
                 except Exception as e:
-                    st.error(f"❌ Error: {str(e)}")
-
+                    st.error(f"Error: {str(e)}")
 
 # -------------------------------
 # Sidebar
 # -------------------------------
 st.sidebar.title("About")
 st.sidebar.info(
-    "This is a YouTube RAG Chatbot built using LangChain, OpenAI, and FAISS.\n\n"
-    "1. Enter a youtube ID or the link\n"
-    "2. Process the video\n"
-    "3. Chat with the video!"
+    "Chat with any YouTube video using AI.\n\n"
+    "1. Paste video link\n"
+    "2. Process\n"
+    "3. Ask questions"
 )
